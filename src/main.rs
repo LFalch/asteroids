@@ -178,7 +178,14 @@ fn asteroid_spawner_system(
         while spawner.timer >= ASTEROID_SPAWN_TIME {
             spawner.timer -= ASTEROID_SPAWN_TIME;
             for _ in 0..spawner.amount {
-                spawn_asteroid(commands, &mut materials, rnd.gen_range(-w ..= w), rnd.gen_range(-h ..= h), rnd.gen_range(-300. ..= 300.), rnd.gen_range(-250. ..= 250.), rnd.gen_range(16. ..= 256.));
+                let sign = if rnd.gen::<bool>() { 1. } else { -1. };
+                let sign2 = if rnd.gen::<bool>() { 1. } else { -1. };
+                let (x, y, svx, svy) = if rnd.gen::<bool>() {
+                    (rnd.gen_range(-w ..= w), sign * h, sign2, -sign)
+                } else {
+                    (sign * w, rnd.gen_range(-h ..= h), -sign, sign2)
+                };
+                spawn_asteroid(commands, &mut materials, x, y, svx * rnd.gen_range(0. ..= 300.), svy * rnd.gen_range(0. ..= 250.), rnd.gen_range(16. ..= 128.), true);
             }
             if spawner.one_time {
                 commands.remove_one::<AsteroidSpawner>(entity);
@@ -254,8 +261,8 @@ fn spawn_bullet(c: &mut Commands, materials: &mut Assets<ColorMaterial>, pos: Ve
     .with(Bullet::default());
 }
 
-fn spawn_asteroid(c: &mut Commands, materials: &mut Assets<ColorMaterial>, x: f32, y: f32, vx: f32, vy: f32, mass: f32) {
-    let size = mass.sqrt() * 6.;
+fn spawn_asteroid(c: &mut Commands, materials: &mut Assets<ColorMaterial>, x: f32, y: f32, vx: f32, vy: f32, mass: f32, spawner: bool) {
+    let size = mass.sqrt() * 12.;
     c.spawn(SpriteBundle {
         material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
         transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
@@ -266,12 +273,15 @@ fn spawn_asteroid(c: &mut Commands, materials: &mut Assets<ColorMaterial>, x: f3
         velocity: Vec3::new(vx, vy, 0.),
         mass,
     })
-    .with(Asteroid)
-    .with(AsteroidSpawner { one_time: true, .. Default::default() });
+    .with(Asteroid);
+    if spawner {
+        c.with(AsteroidSpawner { one_time: true, .. Default::default() });
+    }
 }
 
 fn collision_system(
     commands: &mut Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
     mut query: Query<(Entity, Option<&mut PlayerShip>, Option<&Bullet>, Option<&Asteroid>, &mut Physics, &Transform, &Sprite)>,
     mut scoreboard_query: Query<&mut Scoreboard>,
 ) {
@@ -287,17 +297,27 @@ fn collision_system(
             right_spr.size,
         );
         if let Some(collision) = collision {
-            let resolve = match ((left_pl, left_bul, left_ast), (right_pl, right_bul, right_ast)) {
-                ((None, None, Some(_)), (None, None, Some(_))) => {
+            let resolve = match ((left_pl, left_bul, left_ast, (&left_phys, left_trans)), (right_pl, right_bul, right_ast, (&right_phys, right_trans))) {
+                ((None, None, Some(_), _), (None, None, Some(_), _)) => {
                     // ast <-> ast
                     true
                 }
-                ((None, Some(_), None), (None, Some(_), None)) => true,
-                ((Some(ref mut pl), None, None), (None, None, Some(_))) | ((None, None, Some(_)), (Some(ref mut pl), None, None)) => {
+                ((None, Some(_), None, _), (None, Some(_), None, _)) => true,
+                ((Some(ref mut pl), None, None, _), (None, None, Some(_), _)) | ((None, None, Some(_), _), (Some(ref mut pl), None, None, _)) => {
                     pl.lives = pl.lives.saturating_sub(1);
                     true
                 }
-                ((None, Some(_), None), (None, None, Some(_))) | ((None, None, Some(_)), (None, Some(_), None)) => {
+                ((None, Some(_), None, _), (None, None, Some(_), (ast_phys, ast_trans))) | ((None, None, Some(_), (ast_phys, ast_trans)), (None, Some(_), None, _)) => {
+                    if ast_phys.mass > 32. {
+                        let (x, y) = (ast_trans.translation.x, ast_trans.translation.y);
+                        let side = ast_phys.velocity.normalize().cross(Vec3::unit_z()) * 50.;
+                        let mass = ast_phys.mass / 2.;
+                        let phys = ast_phys.velocity + side;
+                        let phys2 = ast_phys.velocity - side;
+                        spawn_asteroid(commands, &mut materials, x, y, phys.x, phys.y, mass, false);
+                        spawn_asteroid(commands, &mut materials, x, y, phys2.x, phys2.y, mass, false);
+                    }
+
                     commands
                         .despawn(*left_entity)
                         .despawn(*right_entity);
@@ -308,7 +328,7 @@ fn collision_system(
 
                     false
                 }
-                ((Some(_), _, _), (_, _, Some(_))) | ((_, _, Some(_)), (Some(_), _, _)) => false,
+                ((Some(_), _, _, _), (_, _, Some(_), _)) | ((_, _, Some(_), _), (Some(_), _, _, _)) => false,
                 _ => false,
             };
             if resolve {
