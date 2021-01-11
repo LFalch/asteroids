@@ -1,3 +1,5 @@
+mod either;
+
 use self_compare::SliceCompareExt;
 
 use rand::Rng;
