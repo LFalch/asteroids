@@ -38,6 +38,7 @@ fn setup(
     commands
         .spawn(Camera2dBundle::default())
         .spawn(CameraUiBundle::default())
+        // TODO: Make player a triangle instead
         .spawn(SpriteBundle {
             material: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
@@ -265,6 +266,7 @@ fn spawn_bullet(c: &mut Commands, materials: &mut Assets<ColorMaterial>, pos: Ve
 
 fn spawn_asteroid(c: &mut Commands, materials: &mut Assets<ColorMaterial>, x: f32, y: f32, vx: f32, vy: f32, mass: f32, spawner: bool) {
     let size = mass.sqrt() * 12.;
+    // TODO: probably make this more asteroid-y too
     c.spawn(SpriteBundle {
         material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
         transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
