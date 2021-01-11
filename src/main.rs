@@ -4,6 +4,7 @@ use rand::Rng;
 
 use bevy::{
     prelude::*,
+    tasks::{ComputeTaskPool, ParallelIterator},
     input::system::exit_on_esc_system,
     render::pass::ClearColor,
     sprite::collide_aabb::{collide, Collision},
@@ -131,6 +132,7 @@ fn player_movement_system(
 }
 
 fn physics_movement(
+    pool: Res<ComputeTaskPool>,
     time: Res<Time>,
     windows: Res<Windows>,
     mut query: Query<(&Physics, &mut Transform)>,
@@ -139,7 +141,7 @@ fn physics_movement(
     let width = window.width();
     let height = window.height();
 
-    for (physics, mut transform) in query.iter_mut() {
+    query.par_iter_mut(32).for_each(&pool, |(physics, mut transform)| {
         let translation = &mut transform.translation;
 
         *translation += physics.velocity * time.delta_seconds();
@@ -149,7 +151,7 @@ fn physics_movement(
         translation.x %= width;
         translation.y %= height;
         *translation -= Vec3::new(width * 0.5, height * 0.5, 0.);
-    }
+    })
 }
 
 const ASTEROID_LIMIT: usize = 256;
