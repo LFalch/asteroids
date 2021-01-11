@@ -75,9 +75,9 @@ fn setup(
         ;
 }
 
-const ACCELERATION: f32 = 256.+DECELERATION;
+const ACCELERATION: f32 = 512.+DECELERATION;
 // TODO: make deceleration related to the square of the speed, like air resistance. It feels better, and will set a max speed.
-const DECELERATION: f32 = 96.;
+const DECELERATION: f32 = 128.+64.;
 const ROTATION_RATE: f32 = 210. * std::f32::consts::PI / 180.;
 
 fn player_movement_system(
