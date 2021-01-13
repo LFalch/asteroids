@@ -11,13 +11,24 @@ use bevy::{
 };
 
 fn main() {
-    App::build()
+    let mut app = App::build();
+    app
         .add_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .add_resource(WindowDescriptor {
             title: "asteroids".to_owned(),
             .. Default::default()
         })
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins);
+    let handles = {
+        let mut materials = app.resources_mut().get_mut::<Assets<ColorMaterial>>().unwrap();
+        ColourHandles {
+            bullet: materials.add(Color::rgb(0.7, 0.7, 0.1).into()),
+            asteroid: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
+            player: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
+        }
+    };
+    app
+        .add_resource(handles)
         .add_startup_system(setup.system())
         .add_system(player_movement_system.system())
         .add_system(physics_movement.system())
@@ -30,9 +41,16 @@ fn main() {
         .run();
 }
 
+#[derive(Debug, Clone)]
+struct ColourHandles {
+    bullet: Handle<ColorMaterial>,
+    asteroid: Handle<ColorMaterial>,
+    player: Handle<ColorMaterial>,
+}
+
 fn setup(
     commands: &mut Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    colours: Res<ColourHandles>,
     asset_server: Res<AssetServer>,
 ) {
     commands
@@ -40,7 +58,7 @@ fn setup(
         .spawn(CameraUiBundle::default())
         // TODO: Make player a triangle instead
         .spawn(SpriteBundle {
-            material: materials.add(Color::rgb(0.5, 0.5, 1.0).into()),
+            material: colours.player.clone(),
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
             sprite: Sprite::new(Vec2::new(32.0, 32.0)),
             ..Default::default()
@@ -83,7 +101,7 @@ const ROTATION_RATE: f32 = 210. * std::f32::consts::PI / 180.;
 
 fn player_movement_system(
     commands: &mut Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    colours: Res<ColourHandles>,
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<(&mut Physics, &mut Transform, &PlayerShip)>,
@@ -127,7 +145,7 @@ fn player_movement_system(
         
         if player.lives > 0 && keyboard_input.just_pressed(KeyCode::Space) {
             let dir = transform.rotation * Vec3::unit_x();
-            spawn_bullet(commands, &mut materials, transform.translation + 32. * dir, physics.velocity + 512. * dir);
+            spawn_bullet(commands, &*colours, transform.translation + 32. * dir, physics.velocity + 512. * dir);
         }
     }
 }
@@ -160,7 +178,7 @@ const ASTEROID_SPAWN_TIME: f32 = 3.;
 
 fn asteroid_spawner_system(
     commands: &mut Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    colours: Res<ColourHandles>,
     time: Res<Time>,
     windows: Res<Windows>,
     mut query: Query<(Entity, &mut AsteroidSpawner)>,
@@ -188,7 +206,7 @@ fn asteroid_spawner_system(
                 } else {
                     (sign * w, rnd.gen_range(-h ..= h), -sign, sign2)
                 };
-                spawn_asteroid(commands, &mut materials, x, y, svx * rnd.gen_range(0. ..= 300.), svy * rnd.gen_range(0. ..= 250.), rnd.gen_range(16. ..= 128.), true);
+                spawn_asteroid(commands, &*colours, x, y, svx * rnd.gen_range(0. ..= 300.), svy * rnd.gen_range(0. ..= 250.), rnd.gen_range(16. ..= 128.), true);
             }
             if spawner.one_time {
                 commands.remove_one::<AsteroidSpawner>(entity);
@@ -249,9 +267,9 @@ struct Physics {
     mass: f32,
 }
 
-fn spawn_bullet(c: &mut Commands, materials: &mut Assets<ColorMaterial>, pos: Vec3, v: Vec3) {
+fn spawn_bullet(c: &mut Commands, colours: &ColourHandles, pos: Vec3, v: Vec3) {
     c.spawn(SpriteBundle {
-        material: materials.add(Color::rgb(0.7, 0.7, 0.1).into()),
+        material: colours.bullet.clone(),
         transform: Transform::from_translation(pos),
         sprite: Sprite::new(Vec2::new(8.0, 8.0)),
         ..Default::default()
@@ -264,11 +282,11 @@ fn spawn_bullet(c: &mut Commands, materials: &mut Assets<ColorMaterial>, pos: Ve
     .with(Bullet::default());
 }
 
-fn spawn_asteroid(c: &mut Commands, materials: &mut Assets<ColorMaterial>, x: f32, y: f32, vx: f32, vy: f32, mass: f32, spawner: bool) {
+fn spawn_asteroid(c: &mut Commands, colours: &ColourHandles, x: f32, y: f32, vx: f32, vy: f32, mass: f32, spawner: bool) {
     let size = mass.sqrt() * 12.;
     // TODO: probably make this more asteroid-y too
     c.spawn(SpriteBundle {
-        material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
+        material: colours.asteroid.clone(),
         transform: Transform::from_translation(Vec3::new(x, y, 0.0)),
         sprite: Sprite::new(Vec2::new(size, size)),
         ..Default::default()
@@ -285,7 +303,7 @@ fn spawn_asteroid(c: &mut Commands, materials: &mut Assets<ColorMaterial>, x: f3
 
 fn collision_system(
     commands: &mut Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    colours: Res<ColourHandles>,
     mut query: Query<(Entity, Option<&mut PlayerShip>, Option<&Bullet>, Option<&Asteroid>, &mut Physics, &Transform, &Sprite)>,
     mut scoreboard_query: Query<&mut Scoreboard>,
 ) {
@@ -318,8 +336,8 @@ fn collision_system(
                         let mass = ast_phys.mass / 2.;
                         let phys = ast_phys.velocity + side;
                         let phys2 = ast_phys.velocity - side;
-                        spawn_asteroid(commands, &mut materials, x, y, phys.x, phys.y, mass, false);
-                        spawn_asteroid(commands, &mut materials, x, y, phys2.x, phys2.y, mass, false);
+                        spawn_asteroid(commands, &colours, x, y, phys.x, phys.y, mass, false);
+                        spawn_asteroid(commands, &colours, x, y, phys2.x, phys2.y, mass, false);
                     }
 
                     commands
